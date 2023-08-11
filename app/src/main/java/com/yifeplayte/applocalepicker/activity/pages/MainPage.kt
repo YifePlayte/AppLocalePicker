@@ -14,7 +14,6 @@ import cn.fkj233.ui.activity.view.TextSummaryWithArrowV
 import com.yifeplayte.applocalepicker.R
 import io.github.ranlee1.jpinyin.PinyinFormat
 import io.github.ranlee1.jpinyin.PinyinHelper
-import java.util.Locale
 
 @SuppressLint("NonConstantResourceId")
 @BMMainPage(titleId = R.string.app_name)
@@ -26,46 +25,39 @@ class MainPage : BasePage() {
     override fun asyncInit(fragment: MIUIFragment) {
         fragment.showLoading()
         try {
-            @Suppress("DEPRECATION") val applicationsInfo = activity.packageManager.getInstalledApplications(0)
-            applicationsInfo.sortWith { u1, u2 ->
-                return@sortWith PinyinHelper.convertToPinyinString(
-                    u1.loadLabel(activity.packageManager).toString(),
-                    "",
-                    PinyinFormat.WITHOUT_TONE
-                ).lowercase(Locale.ROOT).compareTo(
-                    PinyinHelper.convertToPinyinString(
-                        u2.loadLabel(activity.packageManager).toString(),
-                        "",
-                        PinyinFormat.WITHOUT_TONE
-                    ).lowercase(Locale.ROOT)
-                )
-            }
+            @Suppress("DEPRECATION") val applicationsInfo =
+                activity.packageManager.getInstalledApplications(0).filter { it.isSupportLocalePicker() }.associateWith {
+                    val label = it.loadLabel(activity.packageManager).toString()
+                    PinyinHelper.convertToPinyinString(label, "", PinyinFormat.WITHOUT_TONE).lowercase()
+                }.entries.sortedBy { it.value }.map { it.key }
             for (i in applicationsInfo) {
-                if ((i.flags and ApplicationInfo.FLAG_SYSTEM) != 1) {
-                    val localeConfig = LocaleConfig(activity.createPackageContext(i.packageName, 0))
-                    val localeList = localeConfig.supportedLocales.takeIf { localeConfig.status == LocaleConfig.STATUS_SUCCESS }
-                    if (localeList != null && localeList.size() > 0)
-                        fragment.addItem(
-                            TextSummaryWithArrowV(
-                                TextSummaryV(
-                                    text = i.loadLabel(activity.packageManager).toString(),
-                                    tips = i.packageName
-                                ) {
-                                    val intent = Intent().apply {
-                                        action = Settings.ACTION_APP_LOCALE_SETTINGS
-                                        data = Uri.parse("package:" + i.packageName)
-                                    }
-                                    activity.startActivity(intent)
-                                }
-                            )
-                        )
-                }
+                fragment.addItem(
+                    TextSummaryWithArrowV(
+                        TextSummaryV(
+                            text = i.loadLabel(activity.packageManager).toString(),
+                            tips = i.packageName
+                        ) {
+                            val intent = Intent().apply {
+                                action = Settings.ACTION_APP_LOCALE_SETTINGS
+                                data = Uri.parse("package:" + i.packageName)
+                            }
+                            activity.startActivity(intent)
+                        }
+                    )
+                )
             }
         } catch (e: Throwable) {
             e.printStackTrace()
         }
         fragment.closeLoading()
         fragment.initData()
+    }
+
+    fun ApplicationInfo.isSupportLocalePicker(): Boolean {
+        if ((flags and ApplicationInfo.FLAG_SYSTEM) == 1) return false
+        val localeConfig = LocaleConfig(activity.createPackageContext(packageName, 0))
+        val localeList = localeConfig.supportedLocales.takeIf { localeConfig.status == LocaleConfig.STATUS_SUCCESS } ?: return false
+        return localeList.size() > 0
     }
 
     override fun onCreate() {}
